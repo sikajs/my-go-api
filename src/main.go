@@ -39,6 +39,8 @@ func main() {
 	router.HandleFunc("/posts/create/{post_param}", createPost).Methods("POST")
 	router.HandleFunc("/posts/", listPosts).Methods("GET")
 	router.HandleFunc("/posts/{id}", showPost).Methods("GET")
+	router.HandleFunc("/posts/{id}", updatePost).Methods("PUT")
+	router.HandleFunc("/posts/{id}", deletePost).Methods("DELETE")
 
 	fmt.Println("Running server!")
 	log.Fatal(http.ListenAndServe(":8000", router))
@@ -158,4 +160,10 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
+}
+
+func updatePost(w http.ResponseWriter, r *http.Request) {
+}
+
+func deletePost(w http.ResponseWriter, r *http.Request) {
 }
