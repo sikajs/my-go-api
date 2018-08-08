@@ -28,12 +28,22 @@ type Post struct {
 	Content string `json:"content"`
 }
 
-var posts []Post
+// DB connection
+func dbConnect() *sql.DB {
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(`Database connected.`)
+	return db
+}
 
 func main() {
 	// routing
 	var router = mux.NewRouter()
-	// router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
+	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 	// router.HandleFunc("/message", handleQryMessage).Methods("GET")
 
 	router.HandleFunc("/posts/create/{post_param}", createPost).Methods("POST")
@@ -58,19 +68,8 @@ func main() {
 // 	json.NewEncoder(w).Encode(map[string]string{"message_via_url": message})
 // }
 
-// func healthCheck(w http.ResponseWriter, r *http.Request) {
-// 	json.NewEncoder(w).Encode("Still alive!")
-// }
-
-// DB connection
-func dbConnect() {
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-	fmt.Println(`Database connected.`)
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode("Still alive!")
 }
 
 // CRUD for post
@@ -78,14 +77,9 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	message := vars["msg"]
 
-	//DB connection
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	//TODO: DB connection, will re-connect db every time called.
+	db := dbConnect()
 	defer db.Close()
-	fmt.Println(`Database connected.`)
 
 	sqlStatement := `
 	INSERT INTO posts (id, title, content)
@@ -105,13 +99,8 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 
 //list
 func listPosts(w http.ResponseWriter, r *http.Request) {
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := dbConnect()
 	defer db.Close()
-	fmt.Println(`Database connected.`)
 
 	sqlStatement := `SELECT id, title, content From posts`
 	rows, dbErr := db.Query(sqlStatement)
@@ -120,14 +109,16 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	var posts []Post
 	var post Post
 	for rows.Next() {
-		err = rows.Scan(&post.ID, &post.Title, &post.Content)
+		err := rows.Scan(&post.ID, &post.Title, &post.Content)
 		if err != nil {
 			panic(err)
 		}
 		posts = append(posts, Post{post.ID, post.Title, post.Content})
 	}
+
 	json.NewEncoder(w).Encode(posts)
 }
 
@@ -136,26 +127,18 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["id"]
 
-	var p Post
-
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	db := dbConnect()
 	defer db.Close()
-	fmt.Println(`Database connected.`)
 
+	var p Post
 	sqlStatement := `SELECT id, title, content FROM posts WHERE id=$1`
 	row := db.QueryRow(sqlStatement, key)
 	switch err := row.Scan(&p.ID, &p.Title, &p.Content); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
 	case nil:
-		fmt.Println(p)
 		json.NewEncoder(w).Encode(map[string]Post{"post": p})
 	default:
 		panic(err)
 	}
-
 }
