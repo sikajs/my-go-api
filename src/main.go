@@ -46,7 +46,7 @@ func main() {
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 	// router.HandleFunc("/message", handleQryMessage).Methods("GET")
 
-	router.HandleFunc("/posts/create/{post_param}", createPost).Methods("POST")
+	router.HandleFunc("/posts/{title}", createPost).Methods("POST")
 	router.HandleFunc("/posts/", listPosts).Methods("GET")
 	router.HandleFunc("/posts/{id}", showPost).Methods("GET")
 
@@ -74,27 +74,43 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 
 // CRUD for post
 func createPost(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	message := vars["msg"]
+	params := mux.Vars(r)
+	var post Post
+	var id int
+	var currMaxID int
+	var nextID int
+
+	_ = json.NewDecoder(r.Body).Decode(&post)
+	post.Title = params["title"]
+	post.Content = params["content"]
 
 	//TODO: DB connection, will re-connect db every time called.
 	db := dbConnect()
 	defer db.Close()
+
+	getMaxSQL := `SELECT MAX(id) FROM posts`
+	row := db.QueryRow(getMaxSQL)
+	switch err := row.Scan(&currMaxID); err {
+	case sql.ErrNoRows:
+		fmt.Println("No row was returned!")
+	case nil:
+		nextID = currMaxID + 1
+	default:
+		panic(err)
+	}
 
 	sqlStatement := `
 	INSERT INTO posts (id, title, content)
 	VALUES ($1, $2, $3)
 	RETURNING id`
 
-	var id int
-
-	dbErr := db.QueryRow(sqlStatement, 5, "insert from go", "nice description").Scan(&id)
+	dbErr := db.QueryRow(sqlStatement, nextID, post.Title, post.Content).Scan(&id)
 	if dbErr != nil {
 		panic(dbErr)
 	}
 	fmt.Println("New record ID is:", id)
 
-	json.NewEncoder(w).Encode(map[string]string{"create post based on ": message})
+	json.NewEncoder(w).Encode(map[string]int{"post": id})
 }
 
 //list
