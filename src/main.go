@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	_ "github.com/lib/pq"
 
@@ -44,37 +45,23 @@ func main() {
 	// routing
 	var router = mux.NewRouter()
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
-	// router.HandleFunc("/message", handleQryMessage).Methods("GET")
 
 	router.HandleFunc("/posts/{post}", createPost).Methods("POST")
 	router.HandleFunc("/posts/", listPosts).Methods("GET")
 	router.HandleFunc("/posts/{id}", showPost).Methods("GET")
-	router.HandleFunc("/posts/{id}", updatePost).Methods("PUT")
+	router.HandleFunc("/posts/{id}/{post}", updatePost).Methods("PUT")
 	router.HandleFunc("/posts/{id}", deletePost).Methods("DELETE")
 
 	fmt.Println("Running server!")
 	log.Fatal(http.ListenAndServe(":8000", router))
 }
 
-// func handleQryMessage(w http.ResponseWriter, r *http.Request) {
-// 	vars := r.URL.Query()
-// 	message := vars.Get("msg")
-
-// 	json.NewEncoder(w).Encode(map[string]string{"message": message})
-// }
-
-// func handleURLMessage(w http.ResponseWriter, r *http.Request) {
-// 	vars := mux.Vars(r)
-// 	message := vars["msg"]
-
-// 	json.NewEncoder(w).Encode(map[string]string{"message_via_url": message})
-// }
-
 func healthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode("Still alive!")
 }
 
 // CRUD for post
+//create
 func createPost(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	var post Post
@@ -111,8 +98,6 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	fmt.Print(post)
-
 	sqlStatement := `
 	INSERT INTO posts (id, title, content)
 	VALUES ($1, $2, $3)
@@ -129,6 +114,9 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 
 //list
 func listPosts(w http.ResponseWriter, r *http.Request) {
+	var posts []Post
+	var post Post
+
 	db := dbConnect()
 	defer db.Close()
 
@@ -139,8 +127,6 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var posts []Post
-	var post Post
 	for rows.Next() {
 		err := rows.Scan(&post.ID, &post.Title, &post.Content)
 		if err != nil {
@@ -154,13 +140,14 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 
 //show
 func showPost(w http.ResponseWriter, r *http.Request) {
+	var p Post
+
 	vars := mux.Vars(r)
 	key := vars["id"]
 
 	db := dbConnect()
 	defer db.Close()
 
-	var p Post
 	sqlStatement := `SELECT id, title, content FROM posts WHERE id=$1`
 	row := db.QueryRow(sqlStatement, key)
 	switch err := row.Scan(&p.ID, &p.Title, &p.Content); err {
@@ -173,9 +160,59 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//update
 func updatePost(w http.ResponseWriter, r *http.Request) {
+	var v map[string]interface{}
+	var post Post
+	var hasCondition bool
+	var ok bool
+
+	params := mux.Vars(r)
+	key := params["id"]
+
+	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
+		panic(err)
+	}
+	post.Title, ok = v["title"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get title")
+	}
+	post.Content, ok = v["content"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get content")
+	}
+
+	db := dbConnect()
+	defer db.Close()
+
+	checkStatement := `SELECT id FROM posts WHERE id=$1`
+	row := db.QueryRow(checkStatement, key)
+	switch err := row.Scan(&post.ID); err {
+	case sql.ErrNoRows:
+		fmt.Println("No row were found with key ", key)
+	case nil:
+		updateStatement := `UPDATE posts SET `
+		if post.Title != "" {
+			updateStatement = strings.Join([]string{updateStatement, " title='", post.Title, "'"}, "")
+			hasCondition = true
+		}
+		if post.Content != "" {
+			if hasCondition {
+				updateStatement = strings.Join([]string{updateStatement, ","}, "")
+			}
+			updateStatement = strings.Join([]string{updateStatement, " content='", post.Content, "'"}, "")
+		}
+		updateStatement = strings.Join([]string{updateStatement, " WHERE id='", key, "'"}, "")
+		if _, updateErr := db.Exec(updateStatement); err != nil {
+			panic(updateErr)
+		}
+		json.NewEncoder(w).Encode("Post updated.")
+	default:
+		panic(err)
+	}
 }
 
+//delete
 func deletePost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["id"]
