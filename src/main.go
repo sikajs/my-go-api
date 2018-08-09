@@ -46,7 +46,7 @@ func main() {
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 	// router.HandleFunc("/message", handleQryMessage).Methods("GET")
 
-	router.HandleFunc("/posts/{title}", createPost).Methods("POST")
+	router.HandleFunc("/posts/{post}", createPost).Methods("POST")
 	router.HandleFunc("/posts/", listPosts).Methods("GET")
 	router.HandleFunc("/posts/{id}", showPost).Methods("GET")
 	router.HandleFunc("/posts/{id}", updatePost).Methods("PUT")
@@ -80,33 +80,45 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	var post Post
 	var id int
 	var currMaxID int
-	var nextID int
+	var v map[string]interface{}
+	var ok bool
 
-	_ = json.NewDecoder(r.Body).Decode(&post)
-	post.Title = params["title"]
-	post.Content = params["content"]
+	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
+		panic(err)
+	}
+	post.Title, ok = v["title"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get title")
+	}
+	post.Content, ok = v["content"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get content")
+	}
 
-	//TODO: DB connection, will re-connect db every time called.
+	// TODO: DB connection, will re-connect db every time called.
 	db := dbConnect()
 	defer db.Close()
 
+	// TODO: need to find better way to get next id
 	getMaxSQL := `SELECT MAX(id) FROM posts`
 	row := db.QueryRow(getMaxSQL)
 	switch err := row.Scan(&currMaxID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row was returned!")
 	case nil:
-		nextID = currMaxID + 1
+		post.ID = currMaxID + 1
 	default:
 		panic(err)
 	}
+
+	fmt.Print(post)
 
 	sqlStatement := `
 	INSERT INTO posts (id, title, content)
 	VALUES ($1, $2, $3)
 	RETURNING id`
 
-	dbErr := db.QueryRow(sqlStatement, nextID, post.Title, post.Content).Scan(&id)
+	dbErr := db.QueryRow(sqlStatement, post.ID, post.Title, post.Content).Scan(&id)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -165,4 +177,17 @@ func updatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func deletePost(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["id"]
+
+	db := dbConnect()
+	defer db.Close()
+
+	sqlStatement := `DELETE FROM posts WHERE id=$1`
+	switch _, err := db.Exec(sqlStatement, key); err {
+	case nil:
+		json.NewEncoder(w).Encode("Post deleted.")
+	default:
+		panic(err)
+	}
 }
