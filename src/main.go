@@ -41,16 +41,25 @@ func dbConnect() *sql.DB {
 	return db
 }
 
+func routesV1(r *mux.Router) *mux.Router {
+	return r.PathPrefix("/v1").Subrouter()
+}
+
+func httpOKAndMetaHeader(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusOK)
+}
+
 func main() {
 	// routing
 	var router = mux.NewRouter()
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 
-	router.HandleFunc("/posts/{post}", createPost).Methods("POST")
-	router.HandleFunc("/posts/", listPosts).Methods("GET")
-	router.HandleFunc("/posts/{id}", showPost).Methods("GET")
-	router.HandleFunc("/posts/{id}/{post}", updatePost).Methods("PUT")
-	router.HandleFunc("/posts/{id}", deletePost).Methods("DELETE")
+	routesV1(router).HandleFunc("/posts/{post}", createPost).Methods("POST")
+	routesV1(router).HandleFunc("/posts/", listPosts).Methods("GET")
+	routesV1(router).HandleFunc("/posts/{id}", showPost).Methods("GET")
+	routesV1(router).HandleFunc("/posts/{id}/{post}", updatePost).Methods("PUT")
+	routesV1(router).HandleFunc("/posts/{id}", deletePost).Methods("DELETE")
 
 	fmt.Println("Running server!")
 	log.Fatal(http.ListenAndServe(":8000", router))
@@ -109,6 +118,7 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println("New record ID is:", id)
 
+	httpOKAndMetaHeader(w)
 	json.NewEncoder(w).Encode(map[string]int{"post": id})
 }
 
@@ -135,6 +145,7 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 		posts = append(posts, Post{post.ID, post.Title, post.Content})
 	}
 
+	httpOKAndMetaHeader(w)
 	json.NewEncoder(w).Encode(posts)
 }
 
@@ -153,7 +164,11 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	switch err := row.Scan(&p.ID, &p.Title, &p.Content); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode("No row were found")
 	case nil:
+		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode(map[string]Post{"post": p})
 	default:
 		panic(err)
@@ -190,6 +205,8 @@ func updatePost(w http.ResponseWriter, r *http.Request) {
 	switch err := row.Scan(&post.ID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
+		httpOKAndMetaHeader(w)
+		json.NewEncoder(w).Encode("No row were found")
 	case nil:
 		updateStatement := `UPDATE posts SET `
 		if post.Title != "" {
@@ -206,6 +223,7 @@ func updatePost(w http.ResponseWriter, r *http.Request) {
 		if _, updateErr := db.Exec(updateStatement); err != nil {
 			panic(updateErr)
 		}
+		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post updated.")
 	default:
 		panic(err)
@@ -223,6 +241,7 @@ func deletePost(w http.ResponseWriter, r *http.Request) {
 	sqlStatement := `DELETE FROM posts WHERE id=$1`
 	switch _, err := db.Exec(sqlStatement, key); err {
 	case nil:
+		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post deleted.")
 	default:
 		panic(err)
