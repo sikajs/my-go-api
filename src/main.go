@@ -31,9 +31,10 @@ const (
 
 // Post data structure
 type Post struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	ID       int    `json:"id"`
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	AuthorID int    `json:"auther_id"`
 }
 
 type User struct {
@@ -69,13 +70,13 @@ func main() {
 	var router = mux.NewRouter()
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 	router.HandleFunc("/get_token/{user}", getToken).Methods("POST")
-	router.HandleFunc("/test", validateMiddlerware(TestEndPoint)).Methods("GET")
+	// router.HandleFunc("/test", validateMiddleware(TestEndPoint)).Methods("GET")
 
-	routesV1(router).HandleFunc("/posts/{post}", createPost).Methods("POST")
+	routesV1(router).HandleFunc("/posts/{post}", validateMiddleware(createPost)).Methods("POST")
 	routesV1(router).HandleFunc("/posts/", listPosts).Methods("GET")
 	routesV1(router).HandleFunc("/posts/{id}", showPost).Methods("GET")
-	routesV1(router).HandleFunc("/posts/{id}/{post}", updatePost).Methods("PUT")
-	routesV1(router).HandleFunc("/posts/{id}", deletePost).Methods("DELETE")
+	routesV1(router).HandleFunc("/posts/{id}/{post}", validateMiddleware(updatePost)).Methods("PUT")
+	routesV1(router).HandleFunc("/posts/{id}", validateMiddleware(deletePost)).Methods("DELETE")
 
 	fmt.Println("Running server!")
 	log.Fatal(http.ListenAndServe(":8000", router))
@@ -124,7 +125,7 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			claims := make(jwt.MapClaims)
-			claims["exp"] = time.Now().Add(time.Minute * time.Duration(15)).Unix()
+			claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
 			claims["iat"] = time.Now().Unix()
 			claims["id"] = user.ID
 			claims["username"] = user.Username
@@ -146,14 +147,14 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TestEndPoint(w http.ResponseWriter, r *http.Request) {
-	decoded := context.Get(r, "decoded")
-	var user User
-	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
-	json.NewEncoder(w).Encode(user)
-}
+// func TestEndPoint(w http.ResponseWriter, r *http.Request) {
+// 	decoded := context.Get(r, "decoded")
+// 	var user User
+// 	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
+// 	json.NewEncoder(w).Encode(user)
+// }
 
-func validateMiddlerware(next http.HandlerFunc) http.HandlerFunc {
+func validateMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorizationHeader := r.Header.Get("authorization")
 		if authorizationHeader != "" {
@@ -194,6 +195,11 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	var currMaxID int
 	var v map[string]interface{}
 	var ok bool
+	var user User
+
+	decoded := context.Get(r, "decoded")
+	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
+	post.AuthorID = user.ID
 
 	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
 		panic(err)
@@ -224,11 +230,11 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	createPostSQL := `
-	INSERT INTO posts (id, title, content)
-	VALUES ($1, $2, $3)
+	INSERT INTO posts (id, title, content, author_id)
+	VALUES ($1, $2, $3, $4)
 	RETURNING id`
 
-	dbErr := db.QueryRow(createPostSQL, post.ID, post.Title, post.Content).Scan(&id)
+	dbErr := db.QueryRow(createPostSQL, post.ID, post.Title, post.Content, post.AuthorID).Scan(&id)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -246,7 +252,7 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	db := dbConnect()
 	defer db.Close()
 
-	selectPostsSQL := `SELECT id, title, content From posts`
+	selectPostsSQL := `SELECT id, title, content, author_id From posts ORDER BY id`
 	rows, dbErr := db.Query(selectPostsSQL)
 	if dbErr != nil {
 		panic(dbErr)
@@ -254,11 +260,11 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	for rows.Next() {
-		err := rows.Scan(&post.ID, &post.Title, &post.Content)
+		err := rows.Scan(&post.ID, &post.Title, &post.Content, &post.AuthorID)
 		if err != nil {
 			panic(err)
 		}
-		posts = append(posts, Post{post.ID, post.Title, post.Content})
+		posts = append(posts, Post{post.ID, post.Title, post.Content, post.AuthorID})
 	}
 
 	httpOKAndMetaHeader(w)
@@ -275,9 +281,9 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	db := dbConnect()
 	defer db.Close()
 
-	selectPostSQL := `SELECT id, title, content FROM posts WHERE id=$1`
+	selectPostSQL := `SELECT id, title, content, author_id FROM posts WHERE id=$1`
 	row := db.QueryRow(selectPostSQL, key)
-	switch err := row.Scan(&p.ID, &p.Title, &p.Content); err {
+	switch err := row.Scan(&p.ID, &p.Title, &p.Content, &p.AuthorID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
