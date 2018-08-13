@@ -1,25 +1,30 @@
 package main
 
 import (
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	_ "github.com/lib/pq"
 
 	"github.com/gorilla/mux"
 )
 
 const (
-	host     = "localhost"
-	port     = 5432
-	user     = "pqgotest"
-	password = "password"
-	dbname   = "pqgotest"
-	sslmode  = "disable"
+	host      = "localhost"
+	port      = 5432
+	user      = "pqgotest"
+	password  = "password"
+	dbname    = "pqgotest"
+	sslmode   = "disable"
+	secretKey = "Welcome to JS's playground"
 )
 
 // Post data structure
@@ -27,6 +32,13 @@ type Post struct {
 	ID      int    `json:"id"`
 	Title   string `json:"title"`
 	Content string `json:"content"`
+}
+
+type User struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // DB connection
@@ -54,6 +66,7 @@ func main() {
 	// routing
 	var router = mux.NewRouter()
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
+	router.HandleFunc("/get_token/{user}", getToken).Methods("POST")
 
 	routesV1(router).HandleFunc("/posts/{post}", createPost).Methods("POST")
 	routesV1(router).HandleFunc("/posts/", listPosts).Methods("GET")
@@ -67,6 +80,66 @@ func main() {
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode("Still alive!")
+}
+
+func getToken(w http.ResponseWriter, r *http.Request) {
+	var v map[string]interface{}
+	var user User
+	var ok bool
+	var passwordParam string
+	var finalPass string
+
+	params := mux.Vars(r)
+	if err := json.Unmarshal([]byte(params["user"]), &v); err != nil {
+		panic(err)
+	}
+	user.Username, ok = v["username"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get username")
+	}
+	passwordParam, ok = v["password"].(string)
+	if !ok {
+		fmt.Println("It's not ok to get password")
+	}
+
+	db := dbConnect()
+	defer db.Close()
+
+	selectUserSQL := `SELECT id, name, password FROM users WHERE username=$1`
+	result := db.QueryRow(selectUserSQL, user.Username)
+	switch err := result.Scan(&user.ID, &user.Name, &user.Password); err {
+	case sql.ErrNoRows:
+		fmt.Println("No row was returned.")
+	case nil:
+		encryptedPass := md5.Sum([]byte(passwordParam))
+		finalPass = hex.EncodeToString(encryptedPass[:])
+
+		if user.Password != finalPass {
+			fmt.Println("Invalid login requested.")
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Authentication failed"))
+			return
+		} else {
+			claims := make(jwt.MapClaims)
+			claims["exp"] = time.Now().Add(time.Minute * time.Duration(15)).Unix()
+			claims["iat"] = time.Now().Unix()
+			claims["username"] = user.Username
+			claims["password"] = user.Password
+
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			tokenString, err := token.SignedString([]byte(secretKey))
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintln(w, "Error while signing the token")
+				log.Fatal(err)
+			}
+
+			// json.NewEncoder(w).Encode(tokenString)
+			w.Write([]byte(tokenString))
+		}
+	default:
+		panic(err)
+	}
 }
 
 // CRUD for post
@@ -107,12 +180,12 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
-	sqlStatement := `
+	createPostSQL := `
 	INSERT INTO posts (id, title, content)
 	VALUES ($1, $2, $3)
 	RETURNING id`
 
-	dbErr := db.QueryRow(sqlStatement, post.ID, post.Title, post.Content).Scan(&id)
+	dbErr := db.QueryRow(createPostSQL, post.ID, post.Title, post.Content).Scan(&id)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -130,8 +203,8 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	db := dbConnect()
 	defer db.Close()
 
-	sqlStatement := `SELECT id, title, content From posts`
-	rows, dbErr := db.Query(sqlStatement)
+	selectPostsSQL := `SELECT id, title, content From posts`
+	rows, dbErr := db.Query(selectPostsSQL)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -159,8 +232,8 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	db := dbConnect()
 	defer db.Close()
 
-	sqlStatement := `SELECT id, title, content FROM posts WHERE id=$1`
-	row := db.QueryRow(sqlStatement, key)
+	selectPostSQL := `SELECT id, title, content FROM posts WHERE id=$1`
+	row := db.QueryRow(selectPostSQL, key)
 	switch err := row.Scan(&p.ID, &p.Title, &p.Content); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
@@ -238,8 +311,8 @@ func deletePost(w http.ResponseWriter, r *http.Request) {
 	db := dbConnect()
 	defer db.Close()
 
-	sqlStatement := `DELETE FROM posts WHERE id=$1`
-	switch _, err := db.Exec(sqlStatement, key); err {
+	delSQL := `DELETE FROM posts WHERE id=$1`
+	switch _, err := db.Exec(delSQL, key); err {
 	case nil:
 		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post deleted.")
