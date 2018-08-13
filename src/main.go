@@ -14,7 +14,9 @@ import (
 	jwt "github.com/dgrijalva/jwt-go"
 	_ "github.com/lib/pq"
 
+	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
+	"github.com/mitchellh/mapstructure"
 )
 
 const (
@@ -67,6 +69,7 @@ func main() {
 	var router = mux.NewRouter()
 	router.HandleFunc("/healthcheck", healthCheck).Methods("GET")
 	router.HandleFunc("/get_token/{user}", getToken).Methods("POST")
+	router.HandleFunc("/test", validateMiddlerware(TestEndPoint)).Methods("GET")
 
 	routesV1(router).HandleFunc("/posts/{post}", createPost).Methods("POST")
 	routesV1(router).HandleFunc("/posts/", listPosts).Methods("GET")
@@ -123,6 +126,7 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 			claims := make(jwt.MapClaims)
 			claims["exp"] = time.Now().Add(time.Minute * time.Duration(15)).Unix()
 			claims["iat"] = time.Now().Unix()
+			claims["id"] = user.ID
 			claims["username"] = user.Username
 			claims["password"] = user.Password
 
@@ -140,6 +144,45 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 	default:
 		panic(err)
 	}
+}
+
+func TestEndPoint(w http.ResponseWriter, r *http.Request) {
+	decoded := context.Get(r, "decoded")
+	var user User
+	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
+	json.NewEncoder(w).Encode(user)
+}
+
+func validateMiddlerware(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorizationHeader := r.Header.Get("authorization")
+		if authorizationHeader != "" {
+			bearerToken := strings.Split(authorizationHeader, " ")
+			if len(bearerToken) == 2 {
+				token, error := jwt.Parse(bearerToken[1], func(token *jwt.Token) (interface{}, error) {
+					if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, fmt.Errorf("There was an error")
+					}
+					return []byte(secretKey), nil
+				})
+				if error != nil {
+					json.NewEncoder(w).Encode(error.Error())
+					return
+				}
+				if token.Valid {
+					log.Println("TOKEN WAS VALID")
+					context.Set(r, "decoded", token.Claims)
+					next(w, r)
+				} else {
+					json.NewEncoder(w).Encode("Invalid authorization token")
+				}
+			}
+		} else {
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode("An authorization header is required.")
+		}
+	})
 }
 
 // CRUD for post
