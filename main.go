@@ -17,15 +17,10 @@ import (
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	"github.com/mitchellh/mapstructure"
+	"github.com/sikajs/my-go-api/db"
 )
 
 const (
-	host      = "localhost"
-	port      = 5432
-	user      = "pqgotest"
-	password  = "password"
-	dbname    = "pqgotest"
-	sslmode   = "disable"
 	secretKey = "Welcome to JS's playground"
 )
 
@@ -37,23 +32,12 @@ type Post struct {
 	AuthorID int    `json:"auther_id"`
 }
 
+// User data structure
 type User struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
 	Username string `json:"username"`
 	Password string `json:"password"`
-}
-
-// DB connection
-func dbConnect() *sql.DB {
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, dbname, sslmode)
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println(`Database connected.`)
-	return db
 }
 
 func routesV1(r *mux.Router) *mux.Router {
@@ -106,11 +90,11 @@ func getToken(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("It's not ok to get password")
 	}
 
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	selectUserSQL := `SELECT id, name, password FROM users WHERE username=$1`
-	result := db.QueryRow(selectUserSQL, user.Username)
+	result := dbConn.QueryRow(selectUserSQL, user.Username)
 	switch err := result.Scan(&user.ID, &user.Name, &user.Password); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row was returned.")
@@ -214,12 +198,12 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: DB connection, will re-connect db every time called.
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	// TODO: need to find better way to get next id
 	getMaxSQL := `SELECT MAX(id) FROM posts`
-	row := db.QueryRow(getMaxSQL)
+	row := dbConn.QueryRow(getMaxSQL)
 	switch err := row.Scan(&currMaxID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row was returned!")
@@ -234,7 +218,7 @@ func createPost(w http.ResponseWriter, r *http.Request) {
 	VALUES ($1, $2, $3, $4)
 	RETURNING id`
 
-	dbErr := db.QueryRow(createPostSQL, post.ID, post.Title, post.Content, post.AuthorID).Scan(&id)
+	dbErr := dbConn.QueryRow(createPostSQL, post.ID, post.Title, post.Content, post.AuthorID).Scan(&id)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -249,11 +233,11 @@ func listPosts(w http.ResponseWriter, r *http.Request) {
 	var posts []Post
 	var post Post
 
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	selectPostsSQL := `SELECT id, title, content, author_id From posts ORDER BY id`
-	rows, dbErr := db.Query(selectPostsSQL)
+	rows, dbErr := dbConn.Query(selectPostsSQL)
 	if dbErr != nil {
 		panic(dbErr)
 	}
@@ -278,11 +262,11 @@ func showPost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["id"]
 
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	selectPostSQL := `SELECT id, title, content, author_id FROM posts WHERE id=$1`
-	row := db.QueryRow(selectPostSQL, key)
+	row := dbConn.QueryRow(selectPostSQL, key)
 	switch err := row.Scan(&p.ID, &p.Title, &p.Content, &p.AuthorID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
@@ -319,11 +303,11 @@ func updatePost(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("It's not ok to get content")
 	}
 
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	checkStatement := `SELECT id FROM posts WHERE id=$1`
-	row := db.QueryRow(checkStatement, key)
+	row := dbConn.QueryRow(checkStatement, key)
 	switch err := row.Scan(&post.ID); err {
 	case sql.ErrNoRows:
 		fmt.Println("No row were found with key ", key)
@@ -342,7 +326,7 @@ func updatePost(w http.ResponseWriter, r *http.Request) {
 			updateStatement = strings.Join([]string{updateStatement, " content='", post.Content, "'"}, "")
 		}
 		updateStatement = strings.Join([]string{updateStatement, " WHERE id='", key, "'"}, "")
-		if _, updateErr := db.Exec(updateStatement); err != nil {
+		if _, updateErr := dbConn.Exec(updateStatement); err != nil {
 			panic(updateErr)
 		}
 		httpOKAndMetaHeader(w)
@@ -357,11 +341,11 @@ func deletePost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["id"]
 
-	db := dbConnect()
-	defer db.Close()
+	dbConn := db.Connect()
+	defer dbConn.Close()
 
 	delSQL := `DELETE FROM posts WHERE id=$1`
-	switch _, err := db.Exec(delSQL, key); err {
+	switch _, err := dbConn.Exec(delSQL, key); err {
 	case nil:
 		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post deleted.")
