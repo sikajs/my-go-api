@@ -18,27 +18,15 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/sikajs/my-go-api/db"
 	"github.com/sikajs/my-go-api/handler"
+	"github.com/sikajs/my-go-api/model"
 )
 
 const (
 	secretKey = "Welcome to JS's playground"
 )
 
-// User data structure
-type User struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 func routesV1(r *mux.Router) *mux.Router {
 	return r.PathPrefix("/v1").Subrouter()
-}
-
-func httpOKAndMetaHeader(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
@@ -64,7 +52,7 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 
 func getToken(w http.ResponseWriter, r *http.Request) {
 	var v map[string]interface{}
-	var user User
+	var user model.User
 	var ok bool
 	var passwordParam string
 	var finalPass string

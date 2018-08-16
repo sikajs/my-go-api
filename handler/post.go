@@ -12,39 +12,23 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mitchellh/mapstructure"
 	"github.com/sikajs/my-go-api/db"
+	"github.com/sikajs/my-go-api/model"
 )
-
-// Post data structure
-type Post struct {
-	ID       int    `json:"id"`
-	Title    string `json:"title"`
-	Content  string `json:"content"`
-	AuthorID int    `json:"auther_id"`
-}
-
-// User data structure
-type User struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
 
 func httpOKAndMetaHeader(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
 }
 
-// CRUD for post
-//create
+//CreatePost creates a post from parameters
 func CreatePost(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	var post Post
+	var post model.Post
 	var id int
 	var currMaxID int
 	var v map[string]interface{}
 	var ok bool
-	var user User
+	var user model.User
 
 	decoded := context.Get(r, "decoded")
 	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
@@ -95,8 +79,8 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 
 //ListPosts lists all posts in db
 func ListPosts(w http.ResponseWriter, r *http.Request) {
-	var posts []Post
-	var post Post
+	var posts []model.Post
+	var post model.Post
 
 	dbConn := db.Connect()
 	defer dbConn.Close()
@@ -113,16 +97,16 @@ func ListPosts(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			panic(err)
 		}
-		posts = append(posts, Post{post.ID, post.Title, post.Content, post.AuthorID})
+		posts = append(posts, model.Post{post.ID, post.Title, post.Content, post.AuthorID})
 	}
 
 	httpOKAndMetaHeader(w)
 	json.NewEncoder(w).Encode(posts)
 }
 
-//show
+//ShowPost display post detail
 func ShowPost(w http.ResponseWriter, r *http.Request) {
-	var p Post
+	var p model.Post
 
 	vars := mux.Vars(r)
 	key := vars["id"]
@@ -140,16 +124,16 @@ func ShowPost(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode("No row were found")
 	case nil:
 		httpOKAndMetaHeader(w)
-		json.NewEncoder(w).Encode(map[string]Post{"post": p})
+		json.NewEncoder(w).Encode(map[string]model.Post{"post": p})
 	default:
 		panic(err)
 	}
 }
 
-//update
+//UpdatePost updates a post with parameters
 func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	var v map[string]interface{}
-	var post Post
+	var post model.Post
 	var hasCondition bool
 	var ok bool
 
@@ -201,7 +185,7 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//delete
+//DeletePost delete a post based on id
 func DeletePost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["id"]
