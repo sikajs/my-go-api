@@ -25,6 +25,9 @@
 #   unused-packages = true
 
 
+[metadata.heroku]
+  root-package = 'my-go-api'
+  go-version = "go1.10.3"
 [prune]
   go-tests = true
   unused-packages = true
