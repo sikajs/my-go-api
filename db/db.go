@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 )
 
 type config struct {
@@ -28,9 +29,10 @@ func getDbConfig() *config {
 
 // Connect with db config
 func Connect() *sql.DB {
-	config := getDbConfig()
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", config.Host, config.Port, config.Username, config.Password, config.Name, config.SSLMode)
-	db, err := sql.Open("postgres", connStr)
+	// config := getDbConfig()
+	// connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", config.Host, config.Port, config.Username, config.Password, config.Name, config.SSLMode)
+	// db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
