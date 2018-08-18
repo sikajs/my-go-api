@@ -30,9 +30,13 @@ func main() {
 	routesV1(router).HandleFunc("/posts/{id}", handler.ValidateMiddleware(handler.DeletePost)).Methods("DELETE")
 
 	fmt.Println("Running server!")
-	log.Fatal(http.ListenAndServe(os.Getenv("PORT"), router))
+	log.Fatal(http.ListenAndServe(decidePort(), router))
 }
 
+func decidePort() string {
+	port := os.Getenv("PORT")
+	return ":" + port
+}
 func healthCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode("Still alive!")
 }
