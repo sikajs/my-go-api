@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	_ "github.com/lib/pq"
 
@@ -29,7 +30,7 @@ func main() {
 	routesV1(router).HandleFunc("/posts/{id}", handler.ValidateMiddleware(handler.DeletePost)).Methods("DELETE")
 
 	fmt.Println("Running server!")
-	log.Fatal(http.ListenAndServe(":8000", router))
+	log.Fatal(http.ListenAndServe(os.Getenv("PORT"), router))
 }
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
