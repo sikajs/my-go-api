@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"github.com/sikajs/my-go-api/model"
 )
 
 type config struct {
@@ -36,6 +40,21 @@ func Connect() *sql.DB {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println(`Database connected.`)
+	return db
+}
+
+// GormConn connect db with Gorm
+func GormConn() *gorm.DB {
+	config := getDbConfig()
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s", config.Host, config.Port, config.Username, config.Password, config.Name, config.SSLMode)
+	db, err := gorm.Open("postgres", connStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db.AutoMigrate(&model.Post{}, &model.User{})
 
 	fmt.Println(`Database connected.`)
 	return db

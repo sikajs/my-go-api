@@ -1,16 +1,20 @@
 package model
 
+import (
+	"github.com/jinzhu/gorm"
+)
+
 // Post data structure
 type Post struct {
-	ID       int    `json:"id"`
-	Title    string `json:"title"`
-	Content  string `json:"content"`
-	AuthorID int    `json:"auther_id"`
+	gorm.Model
+	Title    string
+	Content  string
+	AuthorID uint
 }
 
 // User data structure
 type User struct {
-	ID       int    `json:"id"`
+	gorm.Model
 	Name     string `json:"name"`
 	Username string `json:"username"`
 	Password string `json:"password"`

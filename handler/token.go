@@ -2,7 +2,6 @@ package handler
 
 import (
 	"crypto/md5"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -43,15 +42,12 @@ func GetToken(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("It's not ok to get password")
 	}
 
-	dbConn := db.Connect()
+	dbConn := db.GormConn()
 	defer dbConn.Close()
 
-	selectUserSQL := `SELECT id, name, password FROM users WHERE username=$1`
-	result := dbConn.QueryRow(selectUserSQL, user.Username)
-	switch err := result.Scan(&user.ID, &user.Name, &user.Password); err {
-	case sql.ErrNoRows:
-		fmt.Println("No row was returned.")
-	case nil:
+	if err := dbConn.Where("name = ?", user.Username).First(&user).Error; err != nil {
+		json.NewEncoder(w).Encode("Error: something wrong in giving token!")
+	} else {
 		encryptedPass := md5.Sum([]byte(passwordParam))
 		finalPass = hex.EncodeToString(encryptedPass[:])
 
@@ -59,7 +55,6 @@ func GetToken(w http.ResponseWriter, r *http.Request) {
 			fmt.Println("Invalid login requested.")
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Authentication failed"))
-			return
 		} else {
 			claims := make(jwt.MapClaims)
 			claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
@@ -76,11 +71,8 @@ func GetToken(w http.ResponseWriter, r *http.Request) {
 				log.Fatal(err)
 			}
 
-			// json.NewEncoder(w).Encode(tokenString)
 			w.Write([]byte(tokenString))
 		}
-	default:
-		panic(err)
 	}
 }
 
