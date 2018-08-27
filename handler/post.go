@@ -1,11 +1,9 @@
 package handler
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/context"
@@ -97,54 +95,32 @@ func ShowPost(w http.ResponseWriter, r *http.Request) {
 func UpdatePost(w http.ResponseWriter, r *http.Request) {
 	var v map[string]interface{}
 	var post model.Post
-	var hasCondition bool
 	var ok bool
 
 	params := mux.Vars(r)
-	key := params["id"]
+	id := params["id"]
 
 	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
 		panic(err)
 	}
-	post.Title, ok = v["title"].(string)
-	if !ok {
-		fmt.Println("It's not ok to get title")
-	}
-	post.Content, ok = v["content"].(string)
-	if !ok {
-		fmt.Println("It's not ok to get content")
-	}
 
-	dbConn := db.Connect()
+	dbConn := db.GormConn()
 	defer dbConn.Close()
 
-	checkStatement := `SELECT id FROM posts WHERE id=$1`
-	row := dbConn.QueryRow(checkStatement, key)
-	switch err := row.Scan(&post.ID); err {
-	case sql.ErrNoRows:
-		fmt.Println("No row were found with key ", key)
-		httpOKAndMetaHeader(w)
-		json.NewEncoder(w).Encode("No row were found")
-	case nil:
-		updateStatement := `UPDATE posts SET `
-		if post.Title != "" {
-			updateStatement = strings.Join([]string{updateStatement, " title='", post.Title, "'"}, "")
-			hasCondition = true
+	if err := dbConn.First(&post, id).Error; err != nil {
+		json.NewEncoder(w).Encode("Something wrong in updating post.")
+	} else {
+		post.Title, ok = v["title"].(string)
+		if !ok {
+			fmt.Println("It's not ok to get title")
 		}
-		if post.Content != "" {
-			if hasCondition {
-				updateStatement = strings.Join([]string{updateStatement, ","}, "")
-			}
-			updateStatement = strings.Join([]string{updateStatement, " content='", post.Content, "'"}, "")
+		post.Content, ok = v["content"].(string)
+		if !ok {
+			fmt.Println("It's not ok to get content")
 		}
-		updateStatement = strings.Join([]string{updateStatement, " WHERE id='", key, "'"}, "")
-		if _, updateErr := dbConn.Exec(updateStatement); err != nil {
-			panic(updateErr)
-		}
+		dbConn.Save(&post)
 		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post updated.")
-	default:
-		panic(err)
 	}
 }
 
