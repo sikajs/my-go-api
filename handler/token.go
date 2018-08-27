@@ -45,7 +45,7 @@ func GetToken(w http.ResponseWriter, r *http.Request) {
 	dbConn := db.GormConn()
 	defer dbConn.Close()
 
-	if err := dbConn.Where("name = ?", user.Username).First(&user).Error; err != nil {
+	if err := dbConn.Where("username = ?", user.Username).First(&user).Error; err != nil {
 		json.NewEncoder(w).Encode("Error: something wrong in giving token!")
 	} else {
 		encryptedPass := md5.Sum([]byte(passwordParam))

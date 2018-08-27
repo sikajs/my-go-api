@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
-	"github.com/mitchellh/mapstructure"
 	"github.com/sikajs/my-go-api/db"
 	"github.com/sikajs/my-go-api/model"
 )
@@ -24,11 +21,11 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 	var post model.Post
 	var v map[string]interface{}
 	var ok bool
-	var user model.User
+	// var user model.User
 
-	decoded := context.Get(r, "decoded")
-	mapstructure.Decode(decoded.(jwt.MapClaims), &user)
-	post.AuthorID = user.ID
+	// decoded := context.Get(r, "decoded")
+	// mapstructure.Decode(decoded.(jwt.MapClaims), &user)
+	// post.AuthorID = user.ID
 
 	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
 		panic(err)
@@ -127,17 +124,15 @@ func UpdatePost(w http.ResponseWriter, r *http.Request) {
 //DeletePost delete a post based on id
 func DeletePost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	key := vars["id"]
+	id := vars["id"]
 
-	dbConn := db.Connect()
+	dbConn := db.GormConn()
 	defer dbConn.Close()
 
-	delSQL := `DELETE FROM posts WHERE id=$1`
-	switch _, err := dbConn.Exec(delSQL, key); err {
-	case nil:
+	if err := dbConn.Delete(&model.Post{}, id).Error; err != nil {
+		panic(err)
+	} else {
 		httpOKAndMetaHeader(w)
 		json.NewEncoder(w).Encode("Post deleted.")
-	default:
-		panic(err)
 	}
 }
