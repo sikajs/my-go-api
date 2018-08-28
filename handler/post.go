@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
+	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
+	"github.com/mitchellh/mapstructure"
 	"github.com/sikajs/my-go-api/db"
 	"github.com/sikajs/my-go-api/model"
 )
@@ -21,11 +24,7 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 	var post model.Post
 	var v map[string]interface{}
 	var ok bool
-	// var user model.User
-
-	// decoded := context.Get(r, "decoded")
-	// mapstructure.Decode(decoded.(jwt.MapClaims), &user)
-	// post.AuthorID = user.ID
+	var author model.User
 
 	if err := json.Unmarshal([]byte(params["post"]), &v); err != nil {
 		panic(err)
@@ -41,6 +40,14 @@ func CreatePost(w http.ResponseWriter, r *http.Request) {
 
 	dbConn := db.GormConn()
 	defer dbConn.Close()
+
+	decoded := context.Get(r, "decoded")
+	mapstructure.Decode(decoded.(jwt.MapClaims), &author)
+	if err := dbConn.Where("username = ?", author.Username).First(&author).Error; err != nil {
+		panic(err)
+	} else {
+		post.AuthorID = author.ID
+	}
 
 	if dbConn.NewRecord(post) {
 		dbConn.Create(&post)

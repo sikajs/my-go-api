@@ -9,6 +9,7 @@ type Post struct {
 	gorm.Model
 	Title    string
 	Content  string
+	Author   User `gorm:"foreignkey:AuthorID;association_foreignkey:ID"`
 	AuthorID uint
 }
 
